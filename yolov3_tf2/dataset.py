@@ -1,5 +1,7 @@
 import tensorflow as tf
+import os
 from absl.flags import FLAGS
+import tensorflow_datasets as tfds
 
 @tf.function
 def transform_targets_for_output(y_true, grid_size, anchor_idxs):
@@ -142,3 +144,45 @@ def load_fake_dataset():
     y_train = tf.expand_dims(y_train, axis=0)
 
     return tf.data.Dataset.from_tensor_slices((x_train, y_train))
+
+FACE_FEATURE_MAP = {
+    'image': tf.io.FixedLenFeature([], tf.string),
+    'faces/bbox/xmin': tf.io.VarLenFeature(tf.float32),
+    'faces/bbox/ymin': tf.io.VarLenFeature(tf.float32),
+    'faces/bbox/xmax': tf.io.VarLenFeature(tf.float32),
+    'faces/bbox/ymax': tf.io.VarLenFeature(tf.float32)
+}
+
+def load(batch_size=1, split='train'):
+    
+    # download the dataset
+    dataset = tfds.load(
+        name='wider_face',
+        split=split,
+        data_dir=os.path.join('.', 'data', 'wider_face'),
+        shuffle_files=True,
+        download=True, batch_size=8)
+
+    # preprocessing step
+    def parse_tfrecord(tfrecord, size):
+        x = tf.io.parse_single_example(tfrecord, FACE_FEATURE_MAP)
+        x_train = tf.image.decode_jpeg(x['image'], channels=3)
+        x_train = tf.image.resize(x_train, (size, size))
+
+        y_train = tf.stack([tf.sparse.to_dense(x['faces/bbox/xmin']),
+                            tf.sparse.to_dense(x['faces/bbox/ymin']),
+                            tf.sparse.to_dense(x['faces/bbox/xmax']),
+                            tf.sparse.to_dense(x['faces/bbox/ymax'])], axis=1)
+
+        paddings = [[0, FLAGS.yolo_max_boxes - tf.shape(y_train)[0]], [0, 0]]
+        y_train = tf.pad(y_train, paddings)
+
+        return x_train, y_train
+
+    dataset = dataset.map(lambda x: parse_tfrecord(x, 416))
+    dataset = dataset.repeat() if 'train' in split else dataset
+    dataset = dataset.shuffle(60000) if 'train' in split else dataset
+    dataset = dataset.batch(batch_size)
+    dataset = dataset.prefetch(2)
+
+    return dataset
