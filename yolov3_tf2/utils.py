@@ -1,7 +1,11 @@
-from absl import logging
+import os
+from absl import logging, app
 import numpy as np
 import tensorflow as tf
 import cv2
+import tensorflow_datasets as tfds
+from object_detection.utils import dataset_util
+
 
 YOLOV3_LAYER_LIST = [
     'yolo_darknet',
@@ -103,14 +107,16 @@ def draw_outputs(img, outputs, class_names):
     boxes, objectness, classes, nums = outputs
     boxes, objectness, classes, nums = boxes[0], objectness[0], classes[0], nums[0]
     wh = np.flip(img.shape[0:2])
+    cropped_image = []
     for i in range(nums):
         x1y1 = tuple((np.array(boxes[i][0:2]) * wh).astype(np.int32))
         x2y2 = tuple((np.array(boxes[i][2:4]) * wh).astype(np.int32))
+        cropped_image.append(img[x1y1[1]-5:x2y2[1]+5,x1y1[0]-5:x2y2[0]+5,:].copy())
         img = cv2.rectangle(img, x1y1, x2y2, (255, 0, 0), 2)
         img = cv2.putText(img, '{} {:.4f}'.format(
             class_names[int(classes[i])], objectness[i]),
             x1y1, cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 255), 2)
-    return img
+    return img,cropped_image
 
 
 def draw_labels(x, y, class_names):
@@ -134,3 +140,52 @@ def freeze_all(model, frozen=True):
         for l in model.layers:
             freeze_all(l, frozen)
 
+def main(batch_size=1, split='test'):
+    dataset = tfds.load(
+        name='wider_face',
+        split=split,
+        data_dir=os.path.join('..', 'data', 'wider_face'),
+        shuffle_files=True,
+        download=True)
+    ds_numpy = tfds.as_numpy(dataset)
+    writer = tf.io.TFRecordWriter('../data/tfrecord/test')
+    path = os.path.join('../data/wider_face/downloads/extracted/ZIP.ucexport_download_id_0B6eKvaijfFUDbW4tdGpaYjgzOwMT4R6ikuxYiUtHrEwFA7Iw4SVAMwhF1wp3mCQfiNM/WIDER_test/images')
+    for ex in ds_numpy:
+        tf_ex = create_tfrecord(ex,path)
+        writer.write(tf_ex.SerializeToString())
+    writer.close()
+    print('successfully created in ../data/tfrecord')
+
+def _bytes_list_feature(value):
+    return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+
+def _float_list_feature(value):
+    return tf.train.Feature(bytes_list=tf.train.FloatList(value=[value]))
+
+def create_tfrecord(ex,path):
+    with tf.io.gfile.GFile(os.path.join(path, '{}'.format(ex['image/filename'].decode('utf-8'))), 'rb') as fid:
+        encoded_jpg = fid.read()
+    xmins = []
+    xmaxs = []
+    ymins = []
+    ymaxs = []
+    classes_text = []
+    for face in ex['faces']['bbox']:
+        xmins.append(face[0])
+        xmaxs.append(face[2])
+        ymins.append(face[1])
+        ymaxs.append(face[3])
+        classes_text.append('face'.encode('utf-8'))
+    tf_ex = tf.train.Example(features=tf.train.Features(feature={
+        'image/encoded': dataset_util.bytes_feature(encoded_jpg),
+        'image/object/bbox/xmin': dataset_util.float_list_feature(xmins),
+        'image/object/bbox/xmax': dataset_util.float_list_feature(xmaxs),
+        'image/object/bbox/ymin': dataset_util.float_list_feature(ymins),
+        'image/object/bbox/ymax': dataset_util.float_list_feature(ymaxs),
+        'image/object/class/text': dataset_util.bytes_list_feature(classes_text)
+    }))
+    return tf_ex
+
+if __name__=='__main__':
+    app.run(main)
+    

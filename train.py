@@ -110,6 +110,7 @@ def main(_argv):
 
     else:
         # All other transfer require matching classes
+        print('yes')
         model.load_weights(FLAGS.weights)
         if FLAGS.transfer == 'fine_tune':
             # freeze darknet and fine tune other layers

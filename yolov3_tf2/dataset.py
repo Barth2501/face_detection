@@ -1,5 +1,6 @@
 import tensorflow as tf
 import os
+import sys
 from absl.flags import FLAGS
 import tensorflow_datasets as tfds
 
@@ -22,7 +23,7 @@ def transform_targets_for_output(y_true, grid_size, anchor_idxs):
             if tf.equal(y_true[i][j][2], 0):
                 continue
             anchor_eq = tf.equal(
-                anchor_idxs, tf.cast(y_true[i][j][5], tf.int32))
+                anchor_idxs, tf.cast(y_true[i][j][4], tf.int32))
 
             if tf.reduce_any(anchor_eq):
                 box = y_true[i][j][0:4]
@@ -113,8 +114,8 @@ def parse_tfrecord(tfrecord, class_table, size):
                         tf.sparse.to_dense(x['image/object/bbox/xmax']),
                         tf.sparse.to_dense(x['image/object/bbox/ymax']),
                         labels], axis=1)
-
-    paddings = [[0, FLAGS.yolo_max_boxes - tf.shape(y_train)[0]], [0, 0]]
+    
+    paddings = [[0, 1], [0, 0]]
     y_train = tf.pad(y_train, paddings)
 
     return x_train, y_train
@@ -161,28 +162,21 @@ def load(batch_size=1, split='train'):
         split=split,
         data_dir=os.path.join('.', 'data', 'wider_face'),
         shuffle_files=True,
-        download=True, batch_size=8)
+        download=True)
 
-    # preprocessing step
-    def parse_tfrecord(tfrecord, size):
-        x = tf.io.parse_single_example(tfrecord, FACE_FEATURE_MAP)
-        x_train = tf.image.decode_jpeg(x['image'], channels=3)
-        x_train = tf.image.resize(x_train, (size, size))
+    def parse_dataset(x, size):
+        image = tf.cast(x['image'], tf.float32) / 255. * 2 - 1
+        y_train = x['faces']['bbox']
 
-        y_train = tf.stack([tf.sparse.to_dense(x['faces/bbox/xmin']),
-                            tf.sparse.to_dense(x['faces/bbox/ymin']),
-                            tf.sparse.to_dense(x['faces/bbox/xmax']),
-                            tf.sparse.to_dense(x['faces/bbox/ymax'])], axis=1)
+        # paddings = [[0, FLAGS.yolo_max_boxes - tf.shape(y_train)[0]], [0, 0]]
+        # y_train = tf.pad(y_train, paddings)
 
-        paddings = [[0, FLAGS.yolo_max_boxes - tf.shape(y_train)[0]], [0, 0]]
-        y_train = tf.pad(y_train, paddings)
+        return image, y_train
 
-        return x_train, y_train
-
-    dataset = dataset.map(lambda x: parse_tfrecord(x, 416))
-    dataset = dataset.repeat() if 'train' in split else dataset
-    dataset = dataset.shuffle(60000) if 'train' in split else dataset
-    dataset = dataset.batch(batch_size)
-    dataset = dataset.prefetch(2)
+    dataset = dataset.map(lambda x: parse_dataset(x, 416))
+    # dataset = dataset.repeat() if 'train' in split else dataset
+    # dataset = dataset.shuffle(512) if 'train' in split else dataset
+    # dataset = dataset.batch(batch_size)
+    # dataset = dataset.prefetch(2)
 
     return dataset

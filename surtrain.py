@@ -8,36 +8,46 @@ from yolov3_tf2.models import (
 )
 from absl import flags, logging, app
 from yolov3_tf2.utils import freeze_all
-
+import numpy as np
 
 def main(_argv):
-    model = YoloV3(FLAGS.size, training=True, classes=1)
+    model = YoloV3(FLAGS.size, training=True, classes=80)
     anchors = yolo_anchors
     anchor_masks = yolo_anchor_masks
-    train_dataset = dataset.load(FLAGS.batch_size, split="train[:90%]")
+    train_dataset = dataset.load_tfrecord_dataset("./data/tfrecord/train.tfrecord", './data/faces.names')
+    train_dataset = train_dataset.shuffle(buffer_size=512)
+    train_dataset = train_dataset.batch(FLAGS.batch_size)
     train_dataset = train_dataset.map(lambda x, y: (
-        dataset.transform_images(x, FLAGS.size),
-        dataset.transform_targets(y, anchors, anchor_masks, FLAGS.size)))
-    val_dataset = dataset.load(FLAGS.batch_size, split='train[-10%:]')
+        dataset.transform_images(x, 416),
+        dataset.transform_targets(y, anchors, anchor_masks, 416)))
+    train_dataset = train_dataset.prefetch(
+        buffer_size=tf.data.experimental.AUTOTUNE)
+    val_dataset = dataset.load_tfrecord_dataset("./data/tfrecord/val.tfrecord", './data/faces.names')
+    val_dataset = val_dataset.batch(FLAGS.batch_size)
     val_dataset = val_dataset.map(lambda x, y: (
-        dataset.transform_images(x, FLAGS.size),
-        dataset.transform_targets(y, anchors, anchor_masks, FLAGS.size)))
-    test_dataset = dataset.load(FLAGS.batch_size, split='test')
-    test_dataset = test_dataset.map(lambda x, y: (
-        dataset.transform_images(x, FLAGS.size),
-        dataset.transform_targets(y, anchors, anchor_masks, FLAGS.size)))
+        dataset.transform_images(x, 416),
+        dataset.transform_targets(y, anchors, anchor_masks, 416)))
+
+    # test_dataset = dataset.load(FLAGS.batch_size, split='test')
+    # test_dataset = train_dataset.shuffle(buffer_size=512)
+    # test_dataset = train_dataset.batch(FLAGS.batch_size)
+    # test_dataset = test_dataset.map(lambda x, y: (
+    #     dataset.transform_images(x, FLAGS.size),
+    #     dataset.transform_targets(y, anchors, anchor_masks, FLAGS.size)))
 
     model.load_weights(FLAGS.weights)
     darknet = model.get_layer('yolo_darknet')
-    freeze_all(darknet)
+    freeze_all(darknet)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
 
     optimizer = tf.keras.optimizers.Adam(lr=FLAGS.learning_rate)
 
     avg_loss = tf.keras.metrics.Mean('loss', dtype=tf.float32)
     avg_val_loss = tf.keras.metrics.Mean('val_loss', dtype=tf.float32)
+    loss = [YoloLoss(anchors[mask], classes=80)
+            for mask in anchor_masks]
 
     for epoch in range(1, FLAGS.epochs + 1):
-        for batch, (images, labels) in enumerate(train_dataset):
+        for batch, (images, labels) in train_dataset.enumerate():
             with tf.GradientTape() as tape:
                 outputs = model(images, training=True)
                 regularization_loss = tf.reduce_sum(model.losses)
@@ -81,9 +91,11 @@ def main(_argv):
 if __name__ == "__main__":
     FLAGS = flags.FLAGS
     flags.DEFINE_integer('size', 416, 'image size')
-    flags.DEFINE_integer('epochs', 2, 'number of epochs')
-    flags.DEFINE_integer('batch_size', 1, 'batch size')
+    flags.DEFINE_integer('epochs', 8, 'number of epochs')
+    flags.DEFINE_integer('batch_size', 3, 'batch size')
     flags.DEFINE_float('learning_rate', 1e-3, 'learning rate')
     flags.DEFINE_string('weights', './checkpoints/yolov3.tf',
                     'path to weights file')
+    flags.DEFINE_string('classes', './data/faces.names', 'path to classes file')
+
     app.run(main)
