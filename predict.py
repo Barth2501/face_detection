@@ -44,7 +44,7 @@ def main(_):
 
 if __name__=='__main__':
     FLAGS=flags.FLAGS
-    flags.DEFINE_string('weights','./checkpoints/yolov3_train_2.tf','path to weights')
+    flags.DEFINE_string('weights','./checkpoints/yolov3_train_8.tf','path to weights')
     flags.DEFINE_string('image','','path to the image')
     flags.DEFINE_string('output','./output/plain/','path to all image output')
     flags.DEFINE_string('cropped_output','./output/cropped/','path to the cropped output')
