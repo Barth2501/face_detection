@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 import cv2
 import tensorflow_datasets as tfds
-from object_detection.utils import dataset_util
+#from object_detection.utils import dataset_util
 
 
 YOLOV3_LAYER_LIST = [
@@ -111,7 +111,7 @@ def draw_outputs(img, outputs, class_names):
     for i in range(nums):
         x1y1 = tuple((np.array(boxes[i][0:2]) * wh).astype(np.int32))
         x2y2 = tuple((np.array(boxes[i][2:4]) * wh).astype(np.int32))
-        cropped_image.append(img[x1y1[1]-5:x2y2[1]+5,x1y1[0]-5:x2y2[0]+5,:].copy())
+        cropped_image.append(img[x1y1[1]:x2y2[1],x1y1[0]:x2y2[0],:].copy())
         img = cv2.rectangle(img, x1y1, x2y2, (255, 0, 0), 2)
         img = cv2.putText(img, '{} {:.4f}'.format(
             class_names[int(classes[i])], objectness[i]),
